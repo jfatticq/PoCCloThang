@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "OutfitSelectionWidget.h"
-#include "OutfitManagerComponent.h"
+#include "UI/OutfitSelectionWidget.h"
+#include "Components/OutfitManagerComponent.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"

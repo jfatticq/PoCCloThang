@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "OutfitManagerComponent.h"
+#include "Components/OutfitManagerComponent.h"
 #include "PoCCloThang.h"
 
 UOutfitManagerComponent::UOutfitManagerComponent()
