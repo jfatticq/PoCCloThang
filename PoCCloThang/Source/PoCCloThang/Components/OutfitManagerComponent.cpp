@@ -8,76 +8,187 @@ UOutfitManagerComponent::UOutfitManagerComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-bool UOutfitManagerComponent::ToggleOutfit(FName OutfitName)
+void UOutfitManagerComponent::BeginPlay()
 {
-	FOutfitEntry* Entry = FindOutfitEntry(OutfitName);
-	if (!Entry)
+	Super::BeginPlay();
+
+	// Hide all items initially, then equip the first item in each category
+	for (FClothingItemEntry& Item : Items)
 	{
-		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitManager: Outfit '%s' not found."), *OutfitName.ToString());
-		return false;
+		if (Item.MeshRootComponent)
+		{
+			Item.MeshRootComponent->SetVisibility(false, true);
+		}
 	}
 
-	const bool bNewVisibility = !Entry->bIsVisible;
-	SetOutfitVisible(OutfitName, bNewVisibility);
-	return bNewVisibility;
+	// Equip the first item found in each populated category
+	TSet<EClothingCategory> InitializedCategories;
+	for (const FClothingItemEntry& Item : Items)
+	{
+		if (!InitializedCategories.Contains(Item.Category))
+		{
+			InitializedCategories.Add(Item.Category);
+			EquipItem(Item.ItemName);
+		}
+	}
 }
 
-bool UOutfitManagerComponent::SetOutfitVisible(FName OutfitName, bool bVisible)
+bool UOutfitManagerComponent::EquipItem(FName ItemName)
 {
-	FOutfitEntry* Entry = FindOutfitEntry(OutfitName);
-	if (!Entry)
+	FClothingItemEntry* NewItem = FindItem(ItemName);
+	if (!NewItem)
 	{
-		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitManager: Outfit '%s' not found."), *OutfitName.ToString());
+		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitManager: Item '%s' not found."), *ItemName.ToString());
 		return false;
 	}
 
-	if (!Entry->OutfitRootComponent)
+	if (!NewItem->MeshRootComponent)
 	{
-		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitManager: Outfit '%s' has no root component assigned."), *OutfitName.ToString());
+		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitManager: Item '%s' has no mesh root component assigned."), *ItemName.ToString());
 		return false;
 	}
 
-	Entry->bIsVisible = bVisible;
-	Entry->OutfitRootComponent->SetVisibility(bVisible, /*bPropagateToChildren=*/ true);
+	const EClothingCategory Category = NewItem->Category;
+	const FName PreviousItemName = GetEquippedItemName(Category);
 
-	OnOutfitVisibilityChanged.Broadcast(OutfitName, bVisible);
+	// Hide the previously equipped item in this category
+	if (!PreviousItemName.IsNone() && PreviousItemName != ItemName)
+	{
+		SetItemVisibility(PreviousItemName, false);
+	}
 
-	UE_LOG(LogPoCCloThang, Log, TEXT("OutfitManager: Outfit '%s' visibility set to %s."),
-		*OutfitName.ToString(), bVisible ? TEXT("ON") : TEXT("OFF"));
+	// Show the new item
+	SetItemVisibility(ItemName, true);
+	EquippedItems.Add(Category, ItemName);
+
+	OnClothingItemEquipped.Broadcast(Category, ItemName, PreviousItemName);
+
+	UE_LOG(LogPoCCloThang, Log, TEXT("OutfitManager: Equipped '%s' in %s slot (was '%s')."),
+		*ItemName.ToString(),
+		*UEnum::GetValueAsString(Category),
+		PreviousItemName.IsNone() ? TEXT("none") : *PreviousItemName.ToString());
 
 	return true;
 }
 
-bool UOutfitManagerComponent::IsOutfitVisible(FName OutfitName) const
+FName UOutfitManagerComponent::EquipNextInCategory(EClothingCategory Category)
 {
-	const FOutfitEntry* Entry = FindOutfitEntry(OutfitName);
-	if (!Entry)
+	TArray<FClothingItemEntry> CategoryItems = GetItemsInCategory(Category);
+	if (CategoryItems.Num() == 0)
 	{
-		return false;
+		return NAME_None;
 	}
-	return Entry->bIsVisible;
+
+	const int32 CurrentIndex = GetCurrentIndexInCategory(Category);
+	const int32 NextIndex = (CurrentIndex + 1) % CategoryItems.Num();
+
+	EquipItem(CategoryItems[NextIndex].ItemName);
+	return CategoryItems[NextIndex].ItemName;
 }
 
-FOutfitEntry* UOutfitManagerComponent::FindOutfitEntry(FName OutfitName)
+FName UOutfitManagerComponent::EquipPrevInCategory(EClothingCategory Category)
 {
-	for (FOutfitEntry& Entry : Outfits)
+	TArray<FClothingItemEntry> CategoryItems = GetItemsInCategory(Category);
+	if (CategoryItems.Num() == 0)
 	{
-		if (Entry.OutfitName == OutfitName)
+		return NAME_None;
+	}
+
+	const int32 CurrentIndex = GetCurrentIndexInCategory(Category);
+	const int32 PrevIndex = (CurrentIndex - 1 + CategoryItems.Num()) % CategoryItems.Num();
+
+	EquipItem(CategoryItems[PrevIndex].ItemName);
+	return CategoryItems[PrevIndex].ItemName;
+}
+
+void UOutfitManagerComponent::UnequipCategory(EClothingCategory Category)
+{
+	const FName CurrentItem = GetEquippedItemName(Category);
+	if (!CurrentItem.IsNone())
+	{
+		SetItemVisibility(CurrentItem, false);
+		EquippedItems.Remove(Category);
+
+		OnClothingItemEquipped.Broadcast(Category, NAME_None, CurrentItem);
+	}
+}
+
+FName UOutfitManagerComponent::GetEquippedItemName(EClothingCategory Category) const
+{
+	const FName* Found = EquippedItems.Find(Category);
+	return Found ? *Found : NAME_None;
+}
+
+TArray<FClothingItemEntry> UOutfitManagerComponent::GetItemsInCategory(EClothingCategory Category) const
+{
+	TArray<FClothingItemEntry> Result;
+	for (const FClothingItemEntry& Item : Items)
+	{
+		if (Item.Category == Category)
 		{
-			return &Entry;
+			Result.Add(Item);
+		}
+	}
+	return Result;
+}
+
+int32 UOutfitManagerComponent::GetItemCountInCategory(EClothingCategory Category) const
+{
+	int32 Count = 0;
+	for (const FClothingItemEntry& Item : Items)
+	{
+		if (Item.Category == Category)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+FClothingItemEntry* UOutfitManagerComponent::FindItem(FName ItemName)
+{
+	for (FClothingItemEntry& Item : Items)
+	{
+		if (Item.ItemName == ItemName)
+		{
+			return &Item;
 		}
 	}
 	return nullptr;
 }
 
-const FOutfitEntry* UOutfitManagerComponent::FindOutfitEntry(FName OutfitName) const
+const FClothingItemEntry* UOutfitManagerComponent::FindItem(FName ItemName) const
 {
-	for (const FOutfitEntry& Entry : Outfits)
+	for (const FClothingItemEntry& Item : Items)
 	{
-		if (Entry.OutfitName == OutfitName)
+		if (Item.ItemName == ItemName)
 		{
-			return &Entry;
+			return &Item;
 		}
 	}
 	return nullptr;
+}
+
+int32 UOutfitManagerComponent::GetCurrentIndexInCategory(EClothingCategory Category) const
+{
+	const FName CurrentName = GetEquippedItemName(Category);
+	TArray<FClothingItemEntry> CategoryItems = GetItemsInCategory(Category);
+
+	for (int32 i = 0; i < CategoryItems.Num(); ++i)
+	{
+		if (CategoryItems[i].ItemName == CurrentName)
+		{
+			return i;
+		}
+	}
+	return 0;
+}
+
+void UOutfitManagerComponent::SetItemVisibility(FName ItemName, bool bVisible)
+{
+	FClothingItemEntry* Item = FindItem(ItemName);
+	if (Item && Item->MeshRootComponent)
+	{
+		Item->MeshRootComponent->SetVisibility(bVisible, true);
+	}
 }
