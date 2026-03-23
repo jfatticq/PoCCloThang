@@ -53,7 +53,11 @@ private:
 
 	void ToggleOutfit(FName OutfitName, UTextBlock* StatusText);
 	UOutfitManagerComponent* GetOutfitManager() const;
+	void CacheOutfitManager();
 	void UpdateStatusText(FName OutfitName, UTextBlock* StatusText);
+
+	UPROPERTY()
+	TObjectPtr<UOutfitManagerComponent> CachedOutfitManager;
 
 	static const FName Blouse01Name;
 	static const FName LongSkirt01Name;

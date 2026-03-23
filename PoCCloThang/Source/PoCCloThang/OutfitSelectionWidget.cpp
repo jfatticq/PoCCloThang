@@ -4,8 +4,8 @@
 #include "OutfitManagerComponent.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
-#include "GameFramework/PlayerController.h"
-#include "GameFramework/Pawn.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/Actor.h"
 #include "PoCCloThang.h"
 
 const FName UOutfitSelectionWidget::Blouse01Name = FName(TEXT("Blouse01"));
@@ -14,6 +14,9 @@ const FName UOutfitSelectionWidget::LongSkirt01Name = FName(TEXT("LongSkirt01"))
 void UOutfitSelectionWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	// Find the OutfitManagerComponent in the world (on Tandy or any actor that has one)
+	CacheOutfitManager();
 
 	if (Blouse01)
 	{
@@ -45,7 +48,7 @@ void UOutfitSelectionWidget::ToggleOutfit(FName OutfitName, UTextBlock* StatusTe
 	UOutfitManagerComponent* Manager = GetOutfitManager();
 	if (!Manager)
 	{
-		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitSelectionWidget: No OutfitManagerComponent found on the player pawn."));
+		UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitSelectionWidget: No OutfitManagerComponent found in the world."));
 		return;
 	}
 
@@ -53,21 +56,35 @@ void UOutfitSelectionWidget::ToggleOutfit(FName OutfitName, UTextBlock* StatusTe
 	UpdateStatusText(OutfitName, StatusText);
 }
 
+void UOutfitSelectionWidget::CacheOutfitManager()
+{
+	// Search all actors in the world for one with an OutfitManagerComponent
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	TArray<AActor*> AllActors;
+	UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), AllActors);
+
+	for (AActor* Actor : AllActors)
+	{
+		UOutfitManagerComponent* Comp = Actor->FindComponentByClass<UOutfitManagerComponent>();
+		if (Comp)
+		{
+			CachedOutfitManager = Comp;
+			UE_LOG(LogPoCCloThang, Log, TEXT("OutfitSelectionWidget: Found OutfitManagerComponent on '%s'."), *Actor->GetName());
+			return;
+		}
+	}
+
+	UE_LOG(LogPoCCloThang, Warning, TEXT("OutfitSelectionWidget: No actor with OutfitManagerComponent found in the world."));
+}
+
 UOutfitManagerComponent* UOutfitSelectionWidget::GetOutfitManager() const
 {
-	APlayerController* PC = GetOwningPlayer();
-	if (!PC)
-	{
-		return nullptr;
-	}
-
-	APawn* Pawn = PC->GetPawn();
-	if (!Pawn)
-	{
-		return nullptr;
-	}
-
-	return Pawn->FindComponentByClass<UOutfitManagerComponent>();
+	return CachedOutfitManager;
 }
 
 void UOutfitSelectionWidget::UpdateStatusText(FName OutfitName, UTextBlock* StatusText)

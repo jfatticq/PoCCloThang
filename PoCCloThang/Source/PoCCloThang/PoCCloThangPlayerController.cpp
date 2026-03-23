@@ -13,20 +13,6 @@ void APoCCloThangPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// spawn outfit selection widget on local player controllers
-	if (IsLocalPlayerController() && OutfitSelectionWidgetClass)
-	{
-		OutfitSelectionWidget = CreateWidget<UUserWidget>(this, OutfitSelectionWidgetClass);
-		if (OutfitSelectionWidget)
-		{
-			OutfitSelectionWidget->AddToPlayerScreen(1);
-		}
-		else
-		{
-			UE_LOG(LogPoCCloThang, Error, TEXT("Could not spawn outfit selection widget."));
-		}
-	}
-
 	// only spawn touch controls on local player controllers
 	if (ShouldUseTouchControls() && IsLocalPlayerController())
 	{
