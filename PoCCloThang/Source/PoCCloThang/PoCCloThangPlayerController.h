@@ -40,6 +40,14 @@ protected:
 	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
 	bool bForceTouchControls = false;
 
+	/** Outfit selection widget to spawn */
+	UPROPERTY(EditAnywhere, Category = "UI|Outfit")
+	TSubclassOf<UUserWidget> OutfitSelectionWidgetClass;
+
+	/** Pointer to the outfit selection widget */
+	UPROPERTY()
+	TObjectPtr<UUserWidget> OutfitSelectionWidget;
+
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
 
