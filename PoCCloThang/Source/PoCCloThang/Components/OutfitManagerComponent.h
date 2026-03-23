@@ -4,32 +4,24 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Data/ClothingTypes.h"
 #include "OutfitManagerComponent.generated.h"
 
-USTRUCT(BlueprintType)
-struct FOutfitEntry
-{
-	GENERATED_BODY()
-
-	/** Display name used to identify this outfit piece (e.g. "Blouse01") */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Outfit")
-	FName OutfitName;
-
-	/** The root scene component for this outfit piece (set in Blueprint) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Outfit")
-	TObjectPtr<USceneComponent> OutfitRootComponent = nullptr;
-
-	/** Whether the outfit piece is currently visible */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Outfit")
-	bool bIsVisible = true;
-};
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnOutfitVisibilityChanged, FName, OutfitName, bool, bIsVisible);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+	FOnClothingItemEquipped,
+	EClothingCategory, Category,
+	FName, NewItemName,
+	FName, PreviousItemName);
 
 /**
- * Manages toggling outfit pieces on/off.
- * Add to your character Blueprint and configure the Outfits array
- * with references to your outfit scene components.
+ * Manages a wardrobe of clothing items organized by category.
+ *
+ * Each category (Top, Bottom, Shoes, Jacket) can have one active item
+ * at a time. Equipping a new item in a category automatically hides
+ * the previous one.
+ *
+ * Add this component to the MetaHuman actor and populate the Items
+ * array with references to clothing mesh root components.
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class POCCLOTHANG_API UOutfitManagerComponent : public UActorComponent
@@ -39,27 +31,52 @@ class POCCLOTHANG_API UOutfitManagerComponent : public UActorComponent
 public:
 	UOutfitManagerComponent();
 
-	/** Outfit pieces managed by this component */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Outfit")
-	TArray<FOutfitEntry> Outfits;
+	/** All clothing items available on this character */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wardrobe")
+	TArray<FClothingItemEntry> Items;
 
-	/** Fired when any outfit's visibility changes */
-	UPROPERTY(BlueprintAssignable, Category = "Outfit")
-	FOnOutfitVisibilityChanged OnOutfitVisibilityChanged;
+	/** Fired when an item is equipped (including at startup) */
+	UPROPERTY(BlueprintAssignable, Category = "Wardrobe")
+	FOnClothingItemEquipped OnClothingItemEquipped;
 
-	/** Toggle an outfit on/off. Returns the new visibility state. */
-	UFUNCTION(BlueprintCallable, Category = "Outfit")
-	bool ToggleOutfit(FName OutfitName);
+	/** Equip a specific item by name. Hides the previous item in the same category. */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	bool EquipItem(FName ItemName);
 
-	/** Set an outfit's visibility explicitly. Returns true if the outfit was found. */
-	UFUNCTION(BlueprintCallable, Category = "Outfit")
-	bool SetOutfitVisible(FName OutfitName, bool bVisible);
+	/** Equip the next item in the given category's carousel. Wraps around. */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	FName EquipNextInCategory(EClothingCategory Category);
 
-	/** Check if an outfit is currently visible. Returns false if not found. */
-	UFUNCTION(BlueprintCallable, Category = "Outfit")
-	bool IsOutfitVisible(FName OutfitName) const;
+	/** Equip the previous item in the given category's carousel. Wraps around. */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	FName EquipPrevInCategory(EClothingCategory Category);
+
+	/** Unequip the current item in a category (hide it, nothing shown). */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	void UnequipCategory(EClothingCategory Category);
+
+	/** Get the currently equipped item name for a category. NAME_None if nothing equipped. */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	FName GetEquippedItemName(EClothingCategory Category) const;
+
+	/** Get all items in a given category (for building carousel UI). */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	TArray<FClothingItemEntry> GetItemsInCategory(EClothingCategory Category) const;
+
+	/** Get the number of items in a category. */
+	UFUNCTION(BlueprintCallable, Category = "Wardrobe")
+	int32 GetItemCountInCategory(EClothingCategory Category) const;
+
+protected:
+	virtual void BeginPlay() override;
 
 private:
-	FOutfitEntry* FindOutfitEntry(FName OutfitName);
-	const FOutfitEntry* FindOutfitEntry(FName OutfitName) const;
+	/** Maps category to currently equipped item name */
+	UPROPERTY()
+	TMap<EClothingCategory, FName> EquippedItems;
+
+	FClothingItemEntry* FindItem(FName ItemName);
+	const FClothingItemEntry* FindItem(FName ItemName) const;
+	int32 GetCurrentIndexInCategory(EClothingCategory Category) const;
+	void SetItemVisibility(FName ItemName, bool bVisible);
 };
